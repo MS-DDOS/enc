@@ -18,6 +18,30 @@ from cement.core.foundation import CementApp
 from cement.core.controller import CementBaseController, expose
 import ast, types
 
+class Alias_Replace(ast.NodeTransformer):
+    def __init__(self):
+        self.new_alias = {}
+
+    def visit_Import(self, node):
+        from Crypto.Hash import SHA256
+        import time
+        imports = []
+        for name in node.names:
+            if name.asname != None:
+                h = SHA256.new()
+                h.update(name.asname + str(time.time()))
+                self.new_alias[name.asname] = h.hexdigest()
+                imports.append(ast.alias(name=name.name, asname=self.new_alias[name.asname]))
+            else:
+                imports.append(name)
+        return ast.Import(imports)
+
+    def visit_Call(self, node):
+        if isinstance(node.func, ast.Attribute):
+            if node.func.value.id in self.new_alias:
+                return ast.Call(func=ast.Attribute(value=ast.Name(id=self.new_alias[node.func.value.id], ctx=ast.Load()), attr=node.func.attr, ctx=ast.Load()), args=node.args, keywords=node.keywords, starargs=node.starargs, kwargs=node.kwargs)
+        return node
+
 class ModifyTree(ast.NodeTransformer):
     def __init__(self, importsToRemove, possibleModules, aliasMap, reverseAliasMap):
         self.importsToRemove = importsToRemove
@@ -147,24 +171,27 @@ class SourceEncryptor(object):
         for source in sources:
             if source != entry:
                 if not tree:
-                    tree = self.sanitize_source(source)
+                    tree = self.sanitize_source(source, False)
                 else:
-                    tree.body += self.sanitize_source(source).body
-        with open(entry,"r") as fin:
-            if not tree: 
-                tree = ast.parse(fin.read())
-            else:
-                tree.body += ast.parse(fin.read()).body
+                    tree.body += self.sanitize_source(source, False).body
+        if tree:
+            tree.body += self.sanitize_source(entry, True).body
+        else:
+            tree = self.sanitize_source(entry, True)
         return tree #returns an ast
 
         # TODO: You should be pickling this...there is no reason to bring it back to a human readable version unless its for debugging
 
-    def sanitize_source(self, source):
+    def sanitize_source(self, source, entry=False):
         with open(source, 'r') as fin:
             root = ast.parse(fin.read())
-        for node in root.body:
-            if not isinstance(node, ast.ClassDef) and not isinstance(node, ast.FunctionDef):
-                root.body.remove(node)
+        fixed_aliasing = Alias_Replace()
+        fixed_aliasing.visit(root)
+        ast.fix_missing_locations(root)
+        if not entry:
+            for node in root.body:
+                if not isinstance(node, ast.ClassDef) and not isinstance(node, ast.FunctionDef) and not isinstance(node, ast.Import) and not isinstance(node, ast.ImportFrom):
+                    root.body.remove(node)
         return root
 
 class CLIController(CementBaseController):
