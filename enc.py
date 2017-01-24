@@ -18,6 +18,8 @@ from cement.core.foundation import CementApp
 from cement.core.controller import CementBaseController, expose
 import ast, types
 
+# TODO: Refactor code to use consistent naming conventions across project.
+
 class Alias_Replace(ast.NodeTransformer):
 """Mutate tree such that all aliased imports are replaced with hash values, BEFORE code is colletively merged."""
     def __init__(self):
