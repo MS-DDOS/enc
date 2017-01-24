@@ -19,30 +19,49 @@ from cement.core.controller import CementBaseController, expose
 import ast, types
 
 class Alias_Replace(ast.NodeTransformer):
+"""Mutate tree such that all aliased imports are replaced with hash values, BEFORE code is colletively merged."""
     def __init__(self):
         self.new_alias = {}
 
     def visit_Import(self, node):
+        """Replace all aliased imports in ast with hash(alias + system time)."""
         from Crypto.Hash import SHA256
         import time
         imports = []
-        for name in node.names:
-            if name.asname != None:
+        for import_name in node.names:
+            if import_name.asname != None:
                 h = SHA256.new()
-                h.update(name.asname + str(time.time()))
-                self.new_alias[name.asname] = h.hexdigest()
-                imports.append(ast.alias(name=name.name, asname=self.new_alias[name.asname]))
+                h.update(import_name.asname + str(time.time()))
+                self.new_alias[import_name.asname] = h.hexdigest()
+                imports.append(ast.alias(name=import_name.name, asname=self.new_alias[import_name.asname]))
             else:
                 imports.append(name)
         return ast.Import(imports)
 
+    def visit_ImportFrom(self, node):
+        """Replace all aliased 'from module import x' style imports in ast with hash(alias + system time)."""
+        from Crypto.Hash import SHA256
+        import time
+        imports = []
+        for import_name in node.names:
+            if import_name.asname != None:
+                h = SHA256.new()
+                h.update(import_name.asname + str(time.time()))
+                self.new_alias[import_name.asname] = h.hexdigest()
+                imports.append(ast.alias(name=import_name.name, asname=self.new_alias[import_name.asname]))
+            else:
+                imports.append(name)
+        return ast.ImportFrom(module=node.module,names=imports,level=node.level)
+
     def visit_Call(self, node):
+        """Replace an references to aliased imports with a hash value."""
         if isinstance(node.func, ast.Attribute):
             if node.func.value.id in self.new_alias:
                 return ast.Call(func=ast.Attribute(value=ast.Name(id=self.new_alias[node.func.value.id], ctx=ast.Load()), attr=node.func.attr, ctx=ast.Load()), args=node.args, keywords=node.keywords, starargs=node.starargs, kwargs=node.kwargs)
         return node
 
 class ModifyTree(ast.NodeTransformer):
+"""Mutate import conflicts associated with having code in seperate modules."""
     def __init__(self, importsToRemove, possibleModules, aliasMap, reverseAliasMap):
         self.importsToRemove = importsToRemove
         self.possibleModules = possibleModules
@@ -50,6 +69,7 @@ class ModifyTree(ast.NodeTransformer):
         self.reverseAliasMap = reverseAliasMap
 
     def visit_Import(self, node):
+        """Remove import statements for modules that will be concatenated."""
         for candidate in self.possibleModules:
             for name in node.names:
                 if candidate == name.name:
@@ -59,15 +79,19 @@ class ModifyTree(ast.NodeTransformer):
         return node
 
     def visit_ImportFrom(self, node):
+        """Remove 'from module import x' style imports from modules that will be concatenated."""
         if node.module in self.possibleModules:
             return None
         return node
 
     def visit_Call(self, node):
+        """Fix method calls that would have previously imported an external module such that scripts can be safely concatenated."""
         if isinstance(node.func, ast.Attribute):
-            if node.func.value.id in self.importsToRemove: #call.attribute.name.string
+        # If the method call is in the form A.B() replace this with B() if module A was imported
+            if node.func.value.id in self.importsToRemove: # call.attribute.name.string
                 return ast.Call(func=ast.Name(id=node.func.attr, ctx=ast.Load()), args=node.args, keywords=node.keywords, starargs=node.starargs, kwargs=node.kwargs)
         elif isinstance(node.func, ast.Name):
+        # If the method call is in the form D.B() replace this with B() if module A was imported as D (Aliased)
             if node.func.id in self.importsToRemove:
                 try:
                     return ast.Call(func=ast.Name(id=self.reverseAliasMap[node.func.id], ctx=ast.Load()), args=node.args, keywords=node.keywords, starargs=node.starargs, kwargs=node.kwargs)
@@ -76,6 +100,7 @@ class ModifyTree(ast.NodeTransformer):
         return node
 
 class SpecialtyVisitor(ast.NodeVisitor):
+"""Gather preliminary information of layout of modules that will be merged."""
     def __init__(self, possibleModules):
         self.stack = 0
         self.classDefinitions = []
@@ -86,10 +111,12 @@ class SpecialtyVisitor(ast.NodeVisitor):
         self.formattedModules = []
 
     def visit_ClassDef(self, node):
+    """Record the name of each class defined in source and store it in an instance level list."""
         self.classDefinitions.append(node.name)
         self.generic_visit(node)
 
     def visit_Import(self, node):
+    """Build instance level alias maps from regular import statements such that if 'import A as B' there would be A -> B, and also B -> A."""
         for importStatement in node.names:
             if importStatement.asname != None:
                 self.alias[importStatement.name] = importStatement.asname
@@ -97,6 +124,7 @@ class SpecialtyVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_ImportFrom(self, node):
+    """Build instance level alias maps from 'from module import x' style imports such that if 'from D import A as B' there would be A -> B, and also B -> A."""
         for importStatement in node.names:
             if importStatement.asname != None:
                 self.alias[importStatement.name] = importStatement.asname
@@ -104,6 +132,7 @@ class SpecialtyVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
     def resolve(self):
+    """Determines which imports can be safely removed and stores them in an instance level list."""
         import os
         for mod in self.possibleModules:
             module_name = os.path.splitext(mod)[0] # 'A.py' -> 'A'
@@ -114,10 +143,12 @@ class SpecialtyVisitor(ast.NodeVisitor):
                 self.importsToRemove.append(module_name)
 
 class SourceEncryptor(object):
+"""Merges source code, resolves dependency problems and then encrypts a Python AST object that can be run later."""
     def __init__(self):
         pass
 
     def merge_and_encrypt(self, sources, entry, secret, storage_type, compress, debug):
+    """Driver methos that merges code, encodes it, encrypts it and writes it to a file"""
         merged_source_ast = self.merge_source_code(sources, entry)
         merged_source_ast = self.resolve_imports(merged_source_ast, sources)
         if storage_type == 'a': #store file either as an AST or as raw source code
@@ -137,6 +168,7 @@ class SourceEncryptor(object):
         return self.encrypt(output_data, secret) # returns a tuple (computed_iv, encrypted source)
 
     def resolve_imports(self, tree, sources):
+    """Call tree helper methods and classes in order to fix import issues associated with merging modules. Repair AST after modifications and return tree."""
         information_gatherer = SpecialtyVisitor(sources)
         information_gatherer.visit(tree)
         information_gatherer.resolve()
@@ -146,10 +178,12 @@ class SourceEncryptor(object):
         return tree
 
     def compress_data(self, data):
+    """Compress AST object using zlib for more compact on-disk storage"""
         import zlib
         return zlib.compress(data)
 
     def encrypt(self, source, secret):
+    """Encrypt merged source code using a hashed secret and AES encryption."""
         from Crypto.Cipher import AES
         from Crypto.Hash import SHA256
         from Crypto.Random import random
@@ -167,6 +201,7 @@ class SourceEncryptor(object):
         return (computed_iv, encryptor.encrypt(source))
 
     def merge_source_code(self, sources, entry):
+    """Merge multiple python source files and returns them as an AST object."""
         tree = None
         for source in sources:
             if source != entry:
@@ -180,9 +215,10 @@ class SourceEncryptor(object):
             tree = self.sanitize_source(entry, True)
         return tree #returns an ast
 
-        # TODO: You should be pickling this...there is no reason to bring it back to a human readable version unless its for debugging
+        # Note: There is no reason to bring it back to a human readable version unless its for debugging
 
     def sanitize_source(self, source, entry=False):
+    """Fix aliasing conflicts and remove any module level code that is not a ClassDef, FunctionDef, Import or ImportFrom provided it is not from the source file containing the application entry point."""
         with open(source, 'r') as fin:
             root = ast.parse(fin.read())
         fixed_aliasing = Alias_Replace()
@@ -195,6 +231,7 @@ class SourceEncryptor(object):
         return root
 
 class CLIController(CementBaseController):
+"""CLI Controller built using the Cement CLI Framework."""
     class Meta:
         label = 'base'
         description = "Tool for encrypting multiple python source files into a single unit that can be run from the RUN utility."
@@ -202,7 +239,7 @@ class CLIController(CementBaseController):
             (['-e', '--entry'], dict(action='store', dest='entry', help='Specify file as application entry point')),
             (['-s', '--source'], dict(action='store', dest='source', nargs='*', help='Space seperated list of source files to be encrypted')),
             (['-p', '--password'], dict(action='store', dest='password', help='Password/Secret used to encrypt source files')),
-            (['-o', '--output'], dict(action='store', dest='output', default='output.sec', help="Specify output path and filename")),
+            (['-o', '--output'], dict(action='store', dest='output', default='output.enc', help="Specify output path and filename")),
             (['-t', '--type'], dict(action='store', dest='storage_type', choices=['a','r'], default='a', help="Specify how code should be stored in the encrypted file. For AST (compatability) use 'a'. For raw code (file size) use 'r'")),
             (['-c', '--compress'], dict(action='store_true', dest='compress', help="Compress output format for reduced filesize (zlib)")),
             (['-d', '--debugOutput'], dict(action='store_true', dest='debug', help="Prints the approximate source code that will be placed into the runnable unit (before encryption)"))
