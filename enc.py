@@ -21,7 +21,7 @@ import ast, types
 # TODO: Refactor code to use consistent naming conventions across project.
 
 class Alias_Replace(ast.NodeTransformer):
-"""Mutate tree such that all aliased imports are replaced with hash values, BEFORE code is colletively merged."""
+    """Mutate tree such that all aliased imports are replaced with hash values, BEFORE code is colletively merged."""
     def __init__(self):
         self.new_alias = {}
 
@@ -37,7 +37,7 @@ class Alias_Replace(ast.NodeTransformer):
                 self.new_alias[import_name.asname] = h.hexdigest()
                 imports.append(ast.alias(name=import_name.name, asname=self.new_alias[import_name.asname]))
             else:
-                imports.append(name)
+                imports.append(import_name)
         return ast.Import(imports)
 
     def visit_ImportFrom(self, node):
@@ -63,7 +63,7 @@ class Alias_Replace(ast.NodeTransformer):
         return node
 
 class ModifyTree(ast.NodeTransformer):
-"""Mutate import conflicts associated with having code in seperate modules."""
+    """Mutate import conflicts associated with having code in seperate modules."""
     def __init__(self, importsToRemove, possibleModules, aliasMap, reverseAliasMap):
         self.importsToRemove = importsToRemove
         self.possibleModules = possibleModules
@@ -102,7 +102,7 @@ class ModifyTree(ast.NodeTransformer):
         return node
 
 class SpecialtyVisitor(ast.NodeVisitor):
-"""Gather preliminary information of layout of modules that will be merged."""
+    """Gather preliminary information of layout of modules that will be merged."""
     def __init__(self, possibleModules):
         self.stack = 0
         self.classDefinitions = []
@@ -113,12 +113,12 @@ class SpecialtyVisitor(ast.NodeVisitor):
         self.formattedModules = []
 
     def visit_ClassDef(self, node):
-    """Record the name of each class defined in source and store it in an instance level list."""
+        """Record the name of each class defined in source and store it in an instance level list."""
         self.classDefinitions.append(node.name)
         self.generic_visit(node)
 
     def visit_Import(self, node):
-    """Build instance level alias maps from regular import statements such that if 'import A as B' there would be A -> B, and also B -> A."""
+        """Build instance level alias maps from regular import statements such that if 'import A as B' there would be A -> B, and also B -> A."""
         for importStatement in node.names:
             if importStatement.asname != None:
                 self.alias[importStatement.name] = importStatement.asname
@@ -126,7 +126,7 @@ class SpecialtyVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_ImportFrom(self, node):
-    """Build instance level alias maps from 'from module import x' style imports such that if 'from D import A as B' there would be A -> B, and also B -> A."""
+        """Build instance level alias maps from 'from module import x' style imports such that if 'from D import A as B' there would be A -> B, and also B -> A."""
         for importStatement in node.names:
             if importStatement.asname != None:
                 self.alias[importStatement.name] = importStatement.asname
@@ -134,7 +134,7 @@ class SpecialtyVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
     def resolve(self):
-    """Determines which imports can be safely removed and stores them in an instance level list."""
+        """Determines which imports can be safely removed and stores them in an instance level list."""
         import os
         for mod in self.possibleModules:
             module_name = os.path.splitext(mod)[0] # 'A.py' -> 'A'
@@ -145,12 +145,12 @@ class SpecialtyVisitor(ast.NodeVisitor):
                 self.importsToRemove.append(module_name)
 
 class SourceEncryptor(object):
-"""Merges source code, resolves dependency problems and then encrypts a Python AST object that can be run later."""
+    """Merges source code, resolves dependency problems and then encrypts a Python AST object that can be run later."""
     def __init__(self):
         pass
 
     def merge_and_encrypt(self, sources, entry, secret, storage_type, compress, debug):
-    """Driver methos that merges code, encodes it, encrypts it and writes it to a file"""
+        """Driver methos that merges code, encodes it, encrypts it and writes it to a file"""
         merged_source_ast = self.merge_source_code(sources, entry)
         merged_source_ast = self.resolve_imports(merged_source_ast, sources)
         if storage_type == 'a': #store file either as an AST or as raw source code
@@ -170,7 +170,7 @@ class SourceEncryptor(object):
         return self.encrypt(output_data, secret) # returns a tuple (computed_iv, encrypted source)
 
     def resolve_imports(self, tree, sources):
-    """Call tree helper methods and classes in order to fix import issues associated with merging modules. Repair AST after modifications and return tree."""
+        """Call tree helper methods and classes in order to fix import issues associated with merging modules. Repair AST after modifications and return tree."""
         information_gatherer = SpecialtyVisitor(sources)
         information_gatherer.visit(tree)
         information_gatherer.resolve()
@@ -180,12 +180,12 @@ class SourceEncryptor(object):
         return tree
 
     def compress_data(self, data):
-    """Compress AST object using zlib for more compact on-disk storage"""
+        """Compress AST object using zlib for more compact on-disk storage"""
         import zlib
         return zlib.compress(data)
 
     def encrypt(self, source, secret):
-    """Encrypt merged source code using a hashed secret and AES encryption."""
+        """Encrypt merged source code using a hashed secret and AES encryption. Return as a tuple containing (string: iv, string: encyrpted_source)"""
         from Crypto.Cipher import AES
         from Crypto.Hash import SHA256
         from Crypto.Random import random
@@ -203,7 +203,7 @@ class SourceEncryptor(object):
         return (computed_iv, encryptor.encrypt(source))
 
     def merge_source_code(self, sources, entry):
-    """Merge multiple python source files and returns them as an AST object."""
+        """Merge multiple python source files and returns them as an AST object."""
         tree = None
         for source in sources:
             if source != entry:
@@ -220,7 +220,7 @@ class SourceEncryptor(object):
         # Note: There is no reason to bring it back to a human readable version unless its for debugging
 
     def sanitize_source(self, source, entry=False):
-    """Fix aliasing conflicts and remove any module level code that is not a ClassDef, FunctionDef, Import or ImportFrom provided it is not from the source file containing the application entry point."""
+        """Fix aliasing conflicts and remove any module level code that is not a ClassDef, FunctionDef, Import or ImportFrom provided it is not from the source file containing the application entry point."""
         with open(source, 'r') as fin:
             root = ast.parse(fin.read())
         fixed_aliasing = Alias_Replace()
@@ -233,7 +233,7 @@ class SourceEncryptor(object):
         return root
 
 class CLIController(CementBaseController):
-"""CLI Controller built using the Cement CLI Framework."""
+    """CLI Controller built using the Cement CLI Framework."""
     class Meta:
         label = 'base'
         description = "Tool for encrypting multiple python source files into a single unit that can be run from the RUN utility."

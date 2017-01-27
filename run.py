@@ -78,10 +78,12 @@ class SourceDecryptor(object):
 		return zlib.decompress(data)
 
 if __name__ == "__main__":
-	if len(sys.argv) != 2:
-		print "Incorrect number of arguments. Usage is: ./run <encrypted_unit_path>"
+	if len(sys.argv) < 2:
+		print "Incorrect number of arguments. Usage is: ./run <encrypted_unit_path> [arg [arg ...]]"
 		exit(1)
 	sd = SourceDecryptor()
 	secret = raw_input("Please enter password: ")
 	tree = sd.decrypt_and_run_target(sys.argv[1], secret)
+	if len(sys.argv) > 2:
+		del sys.argv[1]
 	exec(tree)
