@@ -34,7 +34,7 @@ class Alias_Replace(ast.NodeTransformer):
             if import_name.asname != None:
                 h = SHA256.new()
                 h.update(import_name.asname + str(time.time()))
-                self.new_alias[import_name.asname] = h.hexdigest()
+                self.new_alias[import_name.asname] = 'a'+h.hexdigest()
                 imports.append(ast.alias(name=import_name.name, asname=self.new_alias[import_name.asname]))
             else:
                 imports.append(import_name)
@@ -49,17 +49,18 @@ class Alias_Replace(ast.NodeTransformer):
             if import_name.asname != None:
                 h = SHA256.new()
                 h.update(import_name.asname + str(time.time()))
-                self.new_alias[import_name.asname] = h.hexdigest()
+                self.new_alias[import_name.asname] = 'a'+h.hexdigest()
                 imports.append(ast.alias(name=import_name.name, asname=self.new_alias[import_name.asname]))
             else:
-                imports.append(name)
+                imports.append(import_name)
         return ast.ImportFrom(module=node.module,names=imports,level=node.level)
 
     def visit_Call(self, node):
         """Replace an references to aliased imports with a hash value."""
         if isinstance(node.func, ast.Attribute):
-            if node.func.value.id in self.new_alias:
-                return ast.Call(func=ast.Attribute(value=ast.Name(id=self.new_alias[node.func.value.id], ctx=ast.Load()), attr=node.func.attr, ctx=ast.Load()), args=node.args, keywords=node.keywords, starargs=node.starargs, kwargs=node.kwargs)
+            if isinstance(node.func.value, ast.Name):
+                if node.func.value.id in self.new_alias:
+                    return ast.Call(func=ast.Attribute(value=ast.Name(id=self.new_alias[node.func.value.id], ctx=ast.Load()), attr=node.func.attr, ctx=ast.Load()), args=node.args, keywords=node.keywords, starargs=node.starargs, kwargs=node.kwargs)
         return node
 
 class ModifyTree(ast.NodeTransformer):
@@ -90,8 +91,9 @@ class ModifyTree(ast.NodeTransformer):
         """Fix method calls that would have previously imported an external module such that scripts can be safely concatenated."""
         if isinstance(node.func, ast.Attribute):
         # If the method call is in the form A.B() replace this with B() if module A was imported
-            if node.func.value.id in self.importsToRemove: # call.attribute.name.string
-                return ast.Call(func=ast.Name(id=node.func.attr, ctx=ast.Load()), args=node.args, keywords=node.keywords, starargs=node.starargs, kwargs=node.kwargs)
+            if isinstance(node.func.value, ast.Name):
+                if node.func.value.id in self.importsToRemove: # call.attribute.name.string
+                    return ast.Call(func=ast.Name(id=node.func.attr, ctx=ast.Load()), args=node.args, keywords=node.keywords, starargs=node.starargs, kwargs=node.kwargs)
         elif isinstance(node.func, ast.Name):
         # If the method call is in the form D.B() replace this with B() if module A was imported as D (Aliased)
             if node.func.id in self.importsToRemove:
@@ -174,6 +176,7 @@ class SourceEncryptor(object):
         information_gatherer = SpecialtyVisitor(sources)
         information_gatherer.visit(tree)
         information_gatherer.resolve()
+        print information_gatherer.importsToRemove
         transformed = ModifyTree(information_gatherer.importsToRemove, information_gatherer.formattedModules, information_gatherer.alias, information_gatherer.reverse_alias)
         transformed.visit(tree)
         ast.fix_missing_locations(tree)

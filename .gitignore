@@ -4,3 +4,7 @@ C.py
 astMod.py
 *.pyc
 *.enc
+venv/
+image*
+imgs*
+.DS_Store
