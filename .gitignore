@@ -8,3 +8,4 @@ venv/
 image*
 imgs*
 .DS_Store
+demo_sources/

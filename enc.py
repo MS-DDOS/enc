@@ -139,12 +139,17 @@ class SpecialtyVisitor(ast.NodeVisitor):
         """Determines which imports can be safely removed and stores them in an instance level list."""
         import os
         for mod in self.possibleModules:
-            module_name = os.path.splitext(mod)[0] # 'A.py' -> 'A'
+            module_name = os.path.splitext(self.extract_filename(mod))[0] # 'A.py' -> 'A'
             self.formattedModules.append(module_name)
             if module_name in self.alias:
                 self.importsToRemove.append(self.alias[module_name]) 
             else:
                 self.importsToRemove.append(module_name)
+
+    def extract_filename(self, path):
+        import ntpath
+        head, tail = ntpath.split(path)
+        return tail or ntpath.basename(head)
 
 class SourceEncryptor(object):
     """Merges source code, resolves dependency problems and then encrypts a Python AST object that can be run later."""
@@ -176,7 +181,6 @@ class SourceEncryptor(object):
         information_gatherer = SpecialtyVisitor(sources)
         information_gatherer.visit(tree)
         information_gatherer.resolve()
-        print information_gatherer.importsToRemove
         transformed = ModifyTree(information_gatherer.importsToRemove, information_gatherer.formattedModules, information_gatherer.alias, information_gatherer.reverse_alias)
         transformed.visit(tree)
         ast.fix_missing_locations(tree)
