@@ -67,6 +67,7 @@ To see the built in help menu simply run:
 `python enc.py -h`
 
 **enc.py**
+
 | Flag | Long Flag | Effect | Required|
 | --- | --- | --- | --- |
 | -h | --help | Show help message and exit | N |
