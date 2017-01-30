@@ -41,7 +41,7 @@ class Alias_Replace(ast.NodeTransformer):
         return ast.Import(imports)
 
     def visit_ImportFrom(self, node):
-        """Replace all aliased 'from module import x' style imports in ast with hash(alias + system time)."""
+        """Replace all aliased 'from module import x as y' style imports in ast with hash(alias + system time)."""
         from Crypto.Hash import SHA256
         import time
         imports = []
@@ -61,6 +61,9 @@ class Alias_Replace(ast.NodeTransformer):
             if isinstance(node.func.value, ast.Name):
                 if node.func.value.id in self.new_alias:
                     return ast.Call(func=ast.Attribute(value=ast.Name(id=self.new_alias[node.func.value.id], ctx=ast.Load()), attr=node.func.attr, ctx=ast.Load()), args=node.args, keywords=node.keywords, starargs=node.starargs, kwargs=node.kwargs)
+        elif isinstance(node.func, ast.Name):
+            if node.func.id in self.new_alias:
+                return ast.Call(func=ast.Name(id=self.new_alias[node.func.id], ctx=ast.Load()), args=node.args, keywords=node.keywords, starargs=node.starargs, kwargs=node.kwargs)
         return node
 
 class ModifyTree(ast.NodeTransformer):
@@ -96,6 +99,12 @@ class ModifyTree(ast.NodeTransformer):
                     return ast.Call(func=ast.Name(id=node.func.attr, ctx=ast.Load()), args=node.args, keywords=node.keywords, starargs=node.starargs, kwargs=node.kwargs)
         elif isinstance(node.func, ast.Name):
         # If the method call is in the form D.B() replace this with B() if module A was imported as D (Aliased)
+            if node.func.id in self.reverseAliasMap:
+            # if the method call is in the from D() when 'from X import C as D' so that it becomes C()
+                try:
+                    return ast.Call(func=ast.Name(id=self.reverseAliasMap[node.func.id], ctx=ast.Load()), args=node.args, keywords=node.keywords, starargs=node.starargs, kwargs=node.kwargs)
+                except KeyError:
+                    pass
             if node.func.id in self.importsToRemove:
                 try:
                     return ast.Call(func=ast.Name(id=self.reverseAliasMap[node.func.id], ctx=ast.Load()), args=node.args, keywords=node.keywords, starargs=node.starargs, kwargs=node.kwargs)

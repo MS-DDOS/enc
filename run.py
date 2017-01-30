@@ -84,6 +84,6 @@ if __name__ == "__main__":
 	sd = SourceDecryptor()
 	secret = raw_input("Please enter password: ")
 	tree = sd.decrypt_and_run_target(sys.argv[1], secret)
-	if len(sys.argv) > 2:
+	if len(sys.argv):
 		del sys.argv[1]
 	exec(tree)
