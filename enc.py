@@ -172,7 +172,7 @@ class SourceEncryptor(object):
 
         if debug:
             import astunparse
-            print astunparse.unparse(merged_source_ast)
+            print astunparse.unparse(merged_source_ast) # This can be captured and run for debugging purposes, i.e. `python enc.py xxx > out.py`
 
         return self.encrypt(output_data, secret) # returns a tuple (computed_iv, encrypted source)
 
