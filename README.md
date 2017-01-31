@@ -85,7 +85,7 @@ Note: `--debug` and `--debugOutput` are not equivalent. The first is `enc.py` le
 This will dump the joined source to a file in clear text. You can then locally run:
 <br />`python run_this.py`<br /> to figure out what is going wrong. After correcting the problem you should use the `-l` or `--load` flag to "re-submit" your file for encryption. This might look like:
 <br />`python enc.py -l run_this.py -p admin -o anon.enc`<br />
-Now `anon.enc` can be run in the normal way. This feature is mostly useful in the event that the use finds an edge case that the ENC utility is not properly setup to handle (though these features should be implemented as they are discovered).
+Now `anon.enc` can be run in the normal way. This feature is mostly useful in the event that the user finds an edge case that the ENC utility is not properly setup to handle (though these features should be implemented as they are discovered...and don't worry tests are coming).
 
 ---
 ### Using ENC for your own projects

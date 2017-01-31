@@ -169,6 +169,7 @@ class SourceEncryptor(object):
         """Driver methos that merges code, encodes it, encrypts it and writes it to a file"""
         merged_source_ast = self.merge_source_code(sources, entry)
         merged_source_ast = self.resolve_imports(merged_source_ast, sources)
+        merged_source_ast = self.reorder_imports(merged_source_ast)
         if storage_type == 'a': #store file either as an AST or as raw source code
             import cPickle
             output_data = cPickle.dumps(merged_source_ast, protocol=cPickle.HIGHEST_PROTOCOL)
@@ -194,6 +195,18 @@ class SourceEncryptor(object):
         transformed.visit(tree)
         ast.fix_missing_locations(tree)
         return tree
+
+    def reorder_imports(self, tree):
+        """Reorder module level imports so that they are all at the top of the source."""
+        imports = []
+        for node in tree.body:
+            if isinstance(node, ast.Import) or isinstance(node, ast.ImportFrom):
+                imports.append(node)
+        for import_stmt in imports:
+            tree.body.remove(import_stmt)
+        new_tree_root = ast.Module(imports)
+        new_tree_root.body += tree.body
+        return ast.fix_missing_locations(new_tree_root)
 
     def compress_data(self, data):
         """Compress AST object using zlib for more compact on-disk storage"""
@@ -243,9 +256,9 @@ class SourceEncryptor(object):
         fixed_aliasing.visit(root)
         ast.fix_missing_locations(root)
         if not entry:
-            for node in root.body:
+            for node in root.body: 
                 if not isinstance(node, ast.ClassDef) and not isinstance(node, ast.FunctionDef) and not isinstance(node, ast.Import) and not isinstance(node, ast.ImportFrom):
-                    root.body.remove(node)
+                    root.body.remove(node) # This could be a problem, may need to refactor
         return root
 
 class CLIController(CementBaseController):
