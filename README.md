@@ -78,13 +78,14 @@ To see the built in help menu simply run:
 | -t {a,r} | --type {a,r} | Store as an AST object (default, for compatibility) or store as raw code (file size) | N |
 | -c | --compress | Compress output format for reduced file size (zlib) | N |
 | -d | --debugOutput | Prints the approximate source code that will be placed into the runnable unit (before encryption) | N |
+| -l LOAD | --load LOAD | Load in a single file to be encrypted. Mainly used after correcting issues while debugging | N |
 
 Note: `--debug` and `--debugOutput` are not equivalent. The first is `enc.py` level debugging, and the second is a preview of what `enc.py` will output for a single runnable unit. This is extremely useful if you are having problems encrypting your program. For example you can simply run:
-`python enc.py -e hello.py -s hello.py -p admin -d > run_this.py`
+<br />`python enc.py -e hello.py -s hello.py -p admin -d > run_this.py`<br />
 This will dump the joined source to a file in clear text. You can then locally run:
-`python run_this.py` to figure out what is going wrong. 
-
-Functionality to allow you to 're-submit' a corrected merged source file is coming very very soon!
+<br />`python run_this.py`<br /> to figure out what is going wrong. After correcting the problem you should use the `-l` or `--load` flag to "re-submit" your file for encryption. This might look like:
+<br />`python enc.py -l run_this.py -p admin -o anon.enc`<br />
+Now `anon.enc` can be run in the normal way. This feature is mostly useful in the event that the use finds an edge case that the ENC utility is not properly setup to handle (though these features should be implemented as they are discovered).
 
 ---
 ### Using ENC for your own projects

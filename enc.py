@@ -260,15 +260,25 @@ class CLIController(CementBaseController):
             (['-o', '--output'], dict(action='store', dest='output', default='output.enc', help="Specify output path and filename")),
             (['-t', '--type'], dict(action='store', dest='storage_type', choices=['a','r'], default='a', help="Specify how code should be stored in the encrypted file. For AST (compatability) use 'a'. For raw code (file size) use 'r'")),
             (['-c', '--compress'], dict(action='store_true', dest='compress', help="Compress output format for reduced filesize (zlib)")),
-            (['-d', '--debugOutput'], dict(action='store_true', dest='debug', help="Prints the approximate source code that will be placed into the runnable unit (before encryption)"))
+            (['-d', '--debugOutput'], dict(action='store_true', dest='debug', help="Prints the approximate source code that will be placed into the runnable unit (before encryption)")),
+            (['-l', '--load'], dict(action='store', dest='load', help="Load in a single file to be encrypted. Mainly used after correcting issues while debugging."))
         ]
 
     @expose(hide=True)
     def default(self):
+        se = SourceEncryptor()
+        if self.app.pargs.load and self.app.pargs.password:
+            import cPickle
+            tree = se.sanitize_source(self.app.pargs.load, True)
+            tree = cPickle.dumps(tree)
+            iv, enc_source = se.encrypt(tree, self.app.pargs.password)
+            self.write_to_file(iv, enc_source)
         if self.app.pargs.entry and self.app.pargs.source and self.app.pargs.password:
-            se = SourceEncryptor()
-            (iv, enc_source) = se.merge_and_encrypt(self.app.pargs.source, self.app.pargs.entry, self.app.pargs.password, self.app.pargs.storage_type, self.app.pargs.compress, self.app.pargs.debug)
-            with open(self.app.pargs.output,'wb') as fout:
+            iv, enc_source = se.merge_and_encrypt(self.app.pargs.source, self.app.pargs.entry, self.app.pargs.password, self.app.pargs.storage_type, self.app.pargs.compress, self.app.pargs.debug)
+            self.write_to_file(iv, enc_source)
+
+    def write_to_file(self,iv, enc_source):
+        with open(self.app.pargs.output,'wb') as fout:
                 if self.app.pargs.compress:
                     fout.write('c')                          #compressed
                 else:
@@ -276,7 +286,6 @@ class CLIController(CementBaseController):
                 fout.write(self.app.pargs.storage_type)      #storage_type code
                 fout.write(iv)                               #initialization vector
                 fout.write(enc_source)                       #encrypted source
-            
 class CLIApplication(CementApp):
     class Meta:
         label = "enc"
