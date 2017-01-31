@@ -68,15 +68,15 @@ class Alias_Replace(ast.NodeTransformer):
 
 class ModifyTree(ast.NodeTransformer):
     """Mutate import conflicts associated with having code in seperate modules."""
-    def __init__(self, importsToRemove, possibleModules, aliasMap, reverseAliasMap):
+    def __init__(self, importsToRemove, importedModules, aliasMap, reverseAliasMap):
         self.importsToRemove = importsToRemove
-        self.possibleModules = possibleModules
+        self.importedModules = importedModules
         self.aliasMap = aliasMap
         self.reverseAliasMap = reverseAliasMap
 
     def visit_Import(self, node):
         """Remove import statements for modules that will be concatenated."""
-        for candidate in self.possibleModules:
+        for candidate in self.importedModules:
             for name in node.names:
                 if candidate == name.name:
                     node.names.remove(name)
@@ -86,7 +86,7 @@ class ModifyTree(ast.NodeTransformer):
 
     def visit_ImportFrom(self, node):
         """Remove 'from module import x' style imports from modules that will be concatenated."""
-        if node.module in self.possibleModules:
+        if node.module in self.importedModules:
             return None
         return node
 
@@ -114,13 +114,13 @@ class ModifyTree(ast.NodeTransformer):
 
 class SpecialtyVisitor(ast.NodeVisitor):
     """Gather preliminary information of layout of modules that will be merged."""
-    def __init__(self, possibleModules):
+    def __init__(self, importedModules):
         self.stack = 0
         self.classDefinitions = []
         self.alias = {}
         self.reverse_alias = {}
         self.importsToRemove = []
-        self.possibleModules = possibleModules # This would come from the commandline args in enc.py
+        self.importedModules = importedModules # This would come from the commandline args in enc.py
         self.formattedModules = []
 
     def visit_ClassDef(self, node):
@@ -147,7 +147,7 @@ class SpecialtyVisitor(ast.NodeVisitor):
     def resolve(self):
         """Determines which imports can be safely removed and stores them in an instance level list."""
         import os
-        for mod in self.possibleModules:
+        for mod in self.importedModules:
             module_name = os.path.splitext(self.extract_filename(mod))[0] # 'A.py' -> 'A'
             self.formattedModules.append(module_name)
             if module_name in self.alias:
@@ -169,7 +169,7 @@ class SourceEncryptor(object):
         """Driver methos that merges code, encodes it, encrypts it and writes it to a file"""
         merged_source_ast = self.merge_source_code(sources, entry)
         merged_source_ast = self.resolve_imports(merged_source_ast, sources)
-        merged_source_ast = self.reorder_imports(merged_source_ast)
+        merged_source_ast = self.relocate_imports(merged_source_ast)
         if storage_type == 'a': #store file either as an AST or as raw source code
             import cPickle
             output_data = cPickle.dumps(merged_source_ast, protocol=cPickle.HIGHEST_PROTOCOL)
@@ -196,7 +196,35 @@ class SourceEncryptor(object):
         ast.fix_missing_locations(tree)
         return tree
 
-    def reorder_imports(self, tree):
+    def reorder_imports(self, list_of_imports):
+        """Sorts a list of ast.Import and ast.ImportFrom objects and sorts them based on length and value"""
+        sieve = {"standard_import":[], "aliased_import":[], "from_import":[], "aliased_from_import":[]}
+        for import_stmt in list_of_imports:
+            if isinstance(import_stmt, ast.Import):
+                standard = True
+                for term in import_stmt.names:
+                    if term.asname != None: #If any imports are aliased
+                        standard = False
+                        break
+                if standard:
+                    sieve["standard_import"].append(import_stmt)
+                else:
+                    sieve["aliased_import"].append(import_stmt)
+            else:
+                standard = True
+                for term in import_stmt.names:
+                    if term.asname != None: #if any FromImports are aliased
+                        standard = False
+                        break
+                if standard:
+                    sieve["from_import"].append(import_stmt)
+                else:
+                    sieve["aliased_from_import"].append(import_stmt)
+        for key, value in sieve.items():
+            print key, value
+        return list_of_imports
+
+    def relocate_imports(self, tree):
         """Reorder module level imports so that they are all at the top of the source."""
         imports = []
         for node in tree.body:
@@ -204,6 +232,7 @@ class SourceEncryptor(object):
                 imports.append(node)
         for import_stmt in imports:
             tree.body.remove(import_stmt)
+        imports = self.reorder_imports(imports)
         new_tree_root = ast.Module(imports)
         new_tree_root.body += tree.body
         return ast.fix_missing_locations(new_tree_root)
