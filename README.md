@@ -46,17 +46,16 @@ Try running ENC on the files in the examples directory:
 - another.py - another file required by entry.py
 
 Before trying ENC, run the example as follows:
-`python entry.py`
-and
+<br /> `python entry.py` <br /> and <br />
 `python entry.py helloWorld`
 to familiarize yourself with the output of the program. Now try the same thing using ENC.
 
 This can be done using the following commands:
-`python $ENC_HOME/enc.py -e entry.py -s entry.py aux.py another.py -o test.enc -p admin -c`
-`python $ENC_HOME/run.py test.enc`
-or
-`python $ENC_HOME/run.py test.enc helloWorld`
-enter `admin` and you will see the same output as before!
+<br />`python $ENC_HOME/enc.py -e entry.py -s entry.py aux.py another.py -o test.enc -p admin -c`
+<br />`python $ENC_HOME/run.py test.enc`
+<br />or
+<br />`python $ENC_HOME/run.py test.enc helloWorld`
+<br />enter `admin` and you will see the same output as before!
 
 Note that there is no way to return an encrypted unit to its decrypted state if you forget the password, be sure to keep it safe.
 
