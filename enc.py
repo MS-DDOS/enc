@@ -25,6 +25,17 @@ class Alias_Replace(ast.NodeTransformer):
     def __init__(self):
         self.new_alias = {}
 
+    def visit_Call(self, node):
+        """Replace an references to aliased imports with a hash value."""
+        if isinstance(node.func, ast.Attribute):
+            if isinstance(node.func.value, ast.Name):
+                if node.func.value.id in self.new_alias:
+                    return ast.Call(func=ast.Attribute(value=ast.Name(id=self.new_alias[node.func.value.id], ctx=ast.Load()), attr=node.func.attr, ctx=ast.Load()), args=node.args, keywords=node.keywords, starargs=node.starargs, kwargs=node.kwargs)
+        elif isinstance(node.func, ast.Name):
+            if node.func.id in self.new_alias:
+                return ast.Call(func=ast.Name(id=self.new_alias[node.func.id], ctx=ast.Load()), args=node.args, keywords=node.keywords, starargs=node.starargs, kwargs=node.kwargs)
+        return node
+
     def visit_Import(self, node):
         """Replace all aliased imports in ast with hash(alias + system time)."""
         from Crypto.Hash import SHA256
@@ -54,17 +65,6 @@ class Alias_Replace(ast.NodeTransformer):
             else:
                 imports.append(import_name)
         return ast.ImportFrom(module=node.module,names=imports,level=node.level)
-
-    def visit_Call(self, node):
-        """Replace an references to aliased imports with a hash value."""
-        if isinstance(node.func, ast.Attribute):
-            if isinstance(node.func.value, ast.Name):
-                if node.func.value.id in self.new_alias:
-                    return ast.Call(func=ast.Attribute(value=ast.Name(id=self.new_alias[node.func.value.id], ctx=ast.Load()), attr=node.func.attr, ctx=ast.Load()), args=node.args, keywords=node.keywords, starargs=node.starargs, kwargs=node.kwargs)
-        elif isinstance(node.func, ast.Name):
-            if node.func.id in self.new_alias:
-                return ast.Call(func=ast.Name(id=self.new_alias[node.func.id], ctx=ast.Load()), args=node.args, keywords=node.keywords, starargs=node.starargs, kwargs=node.kwargs)
-        return node
 
 class ModifyTree(ast.NodeTransformer):
     """Mutate import conflicts associated with having code in seperate modules."""
