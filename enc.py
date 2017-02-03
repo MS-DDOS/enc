@@ -22,8 +22,9 @@ import ast, types
 
 class Alias_Replace(ast.NodeTransformer):
     """Mutate tree such that all aliased imports are replaced with hash values, BEFORE code is colletively merged."""
-    def __init__(self):
+    def __init__(self, filename=""):
         self.new_alias = {}
+        self.filename = filename
 
     def visit_Call(self, node):
         """Replace an references to aliased imports with a hash value."""
@@ -39,27 +40,31 @@ class Alias_Replace(ast.NodeTransformer):
     def visit_Import(self, node):
         """Replace all aliased imports in ast with hash(alias + system time)."""
         from Crypto.Hash import SHA256
-        import time
         imports = []
         for import_name in node.names:
             if import_name.asname != None:
                 h = SHA256.new()
-                h.update(import_name.asname + str(time.time()))
+                h.update(import_name.name)
                 self.new_alias[import_name.asname] = 'a'+h.hexdigest()
                 imports.append(ast.alias(name=import_name.name, asname=self.new_alias[import_name.asname]))
             else:
                 imports.append(import_name)
         return ast.Import(imports)
 
+    def visit_Attribute(self, node):
+        """Replace any references to aliased import with a hash value when call is in the form sys.argv"""
+        if node.value.id in self.new_alias:
+            return ast.Attribute(value=ast.Name(id=self.new_alias[node.value.id], ctx=ast.Load()), attr=node.attr)
+        return node
+
     def visit_ImportFrom(self, node):
-        """Replace all aliased 'from module import x as y' style imports in ast with hash(alias + system time)."""
+        """Replace all aliased 'from module import x as y' style imports in ast with hash(module_name)."""
         from Crypto.Hash import SHA256
-        import time
         imports = []
         for import_name in node.names:
             if import_name.asname != None:
                 h = SHA256.new()
-                h.update(import_name.asname + str(time.time()))
+                h.update(import_name.name)
                 self.new_alias[import_name.asname] = 'a'+h.hexdigest()
                 imports.append(ast.alias(name=import_name.name, asname=self.new_alias[import_name.asname]))
             else:
@@ -198,6 +203,7 @@ class SourceEncryptor(object):
 
     def reorder_imports(self, list_of_imports):
         """Sorts a list of ast.Import and ast.ImportFrom objects and sorts them based on length and value"""
+        reverse_order = True
         sieve = {"standard_import":[], "aliased_import":[], "from_import":[], "aliased_from_import":[]}
         for import_stmt in list_of_imports:
             if isinstance(import_stmt, ast.Import):
@@ -220,9 +226,69 @@ class SourceEncryptor(object):
                     sieve["from_import"].append(import_stmt)
                 else:
                     sieve["aliased_from_import"].append(import_stmt)
-        for key, value in sieve.items():
-            print key, value
-        return list_of_imports
+
+        sieve["standard_import"] = self.dedup_imports(sieve["standard_import"])
+        sieve["aliased_import"] = self.dedup_imports(sieve["aliased_import"])
+        sieve["from_import"] = self.dedup_from_imports(sieve["from_import"])
+        #sieve["aliased_from_import"] = self.dedup_imports(sieve["aliased_from_import"])
+
+        sieve["standard_import"] = sorted(sieve["standard_import"], key=self.import_comparator, reverse=reverse_order)
+        sieve["aliased_import"] = sorted(sieve["aliased_import"], key=self.import_comparator, reverse=reverse_order)
+        sieve["from_import"] = sorted(sieve["from_import"], key=self.from_import_comparator, reverse=reverse_order)
+        sieve["aliased_from_import"] = sorted(sieve["aliased_from_import"], key=self.from_import_comparator, reverse=reverse_order)
+
+        combine = []
+        combine.extend(sieve["aliased_from_import"])
+        combine.extend(sieve["from_import"])
+        combine.extend(sieve["aliased_import"])
+        combine.extend(sieve["standard_import"])
+        return combine
+
+    def dedup_imports(self, list_of_imports):
+        modules = {}
+        for import_stmt in list_of_imports:
+            for name in import_stmt.names:
+                modules[name.name] = name.asname
+        deduped_names = [ast.alias(name=unique_name, asname=modules[unique_name]) for unique_name in modules]
+        return [ast.Import(names=[unique_name]) for unique_name in deduped_names]
+
+    def dedup_from_imports(self, list_of_imports):
+        modules = {}
+        for import_stmt in list_of_imports:
+            if import_stmt.module not in modules:
+                modules[import_stmt.module] = {}
+            for name in import_stmt.names:
+                modules[import_stmt.module][name.name] = name.asname
+        deduped = [ast.ImportFrom(module=mod, names=[ast.alias(name=unique_name, asname=modules[mod][unique_name]) for unique_name in modules[mod]], level=0) for mod in modules]
+        return deduped
+
+    def check_import_equality(self, import_a, import_b):
+        equivalent = True
+        for name_a in import_a.names:
+            for name_b in import_b.names:
+                if name_a.name != name_b.name:
+                    equivalent = False
+                    break
+                elif name_a.asname != name_b.asname:
+                    equivalent = False
+                    break
+        return equivalent
+
+    def import_comparator(self, import_object):
+        length = 0
+        for import_stmt in import_object.names:
+            length += len(import_stmt.name)
+            try:
+                length += len(import_stmt.asname)
+            except TypeError:
+                continue
+        return length
+
+    def from_import_comparator(self, import_object):
+        length = 0
+        length += self.import_comparator(import_object)
+        length += len(import_object.module)
+        return length
 
     def relocate_imports(self, tree):
         """Reorder module level imports so that they are all at the top of the source."""
