@@ -54,7 +54,7 @@ class Alias_Replace(ast.NodeTransformer):
     def visit_Attribute(self, node):
         """Replace any references to aliased import with a hash value when call is in the form sys.argv"""
         if node.value.id in self.new_alias:
-            return ast.Attribute(value=ast.Name(id=self.new_alias[node.value.id], ctx=ast.Load()), attr=node.attr)
+            return ast.Attribute(value=ast.Name(id=self.new_alias[node.value.id], ctx=ast.Load()), attr=node.attr, ctx=ast.Load())
         return node
 
     def visit_ImportFrom(self, node):
@@ -139,6 +139,7 @@ class SpecialtyVisitor(ast.NodeVisitor):
             if importStatement.asname != None:
                 self.alias[importStatement.name] = importStatement.asname
                 self.reverse_alias[importStatement.asname] = importStatement.name
+                print "AY!", self.alias
         self.generic_visit(node)
 
     def visit_ImportFrom(self, node):
