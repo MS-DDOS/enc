@@ -139,7 +139,6 @@ class SpecialtyVisitor(ast.NodeVisitor):
             if importStatement.asname != None:
                 self.alias[importStatement.name] = importStatement.asname
                 self.reverse_alias[importStatement.asname] = importStatement.name
-                print "AY!", self.alias
         self.generic_visit(node)
 
     def visit_ImportFrom(self, node):
