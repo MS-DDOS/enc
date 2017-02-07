@@ -18,22 +18,65 @@ from cement.core.foundation import CementApp
 from cement.core.controller import CementBaseController, expose
 import ast, types
 
+
 # TODO: Refactor code to use consistent naming conventions across project.
+
+class Function_Finder(ast.NodeVisitor):
+    def __init__(self, function_to_search_for):
+        self.function_to_search_for = function_to_search_for
+        self.found = False
+
+    def visit_FunctionDef(self, node):
+        if node.name == self.function_to_search_for:
+            self.found = True
 
 class Alias_Replace(ast.NodeTransformer):
     """Mutate tree such that all aliased imports are replaced with hash values, BEFORE code is colletively merged."""
-    def __init__(self, filename=""):
+    def __init__(self, filename="", functions_to_be_made_unique=[]):
+        import os
         self.new_alias = {}
+        self.reverse_new_alias = {}
+        self.module_name = os.path.splitext(self.extract_filename(filename))[0]
+        self.unaliased = {}
         self.filename = filename
+        self.functions_to_be_made_unique = functions_to_be_made_unique
+
+    def extract_filename(self, path):
+        import ntpath
+        head, tail = ntpath.split(path)
+        return tail or ntpath.basename(head)
+
+    def check_external_resources_for_functiondef(self, module_name, func_name):
+        try:
+            with open(module_name + ".py", "r") as fin:
+                tree = ast.parse(fin.read())
+            f = Function_Finder(func_name)
+            f.visit(tree)
+            return f.found
+        except:
+            return False
 
     def visit_Call(self, node):
         """Replace an references to aliased imports with a hash value."""
+        self.generic_visit(node)
         if isinstance(node.func, ast.Attribute):
             if isinstance(node.func.value, ast.Name):
                 if node.func.value.id in self.new_alias:
+                    # replace A.My_Class() with 12f2g3fc1.My_Class()
                     return ast.Call(func=ast.Attribute(value=ast.Name(id=self.new_alias[node.func.value.id], ctx=ast.Load()), attr=node.func.attr, ctx=ast.Load()), args=node.args, keywords=node.keywords, starargs=node.starargs, kwargs=node.kwargs)
+                elif node.func.value.id in self.reverse_new_alias:
+                    if self.check_external_resources_for_functiondef(self.reverse_new_alias[node.func.value.id], node.func.attr):
+                        # fix: import B; B.some_module_level_function() with B_some_module_level_function()
+                        return ast.Call(func=ast.Attribute(value=ast.Name(id=node.func.value.id, ctx=ast.Load()), attr="{:}_{:}".format(self.reverse_new_alias[node.func.value.id], node.func.attr), ctx=ast.Load()), args=node.args, keywords=node.keywords, starargs=node.starargs, kwargs=node.kwargs)
+                else:
+                    if self.check_external_resources_for_functiondef(node.func.value.id, node.func.attr):
+                        return ast.Call(func=ast.Attribute(value=ast.Name(id=node.func.value.id, ctx=ast.Load()), attr="{:}_{:}".format(node.func.value.id, node.func.attr), ctx=ast.Load()), args=node.args, keywords=node.keywords, starargs=node.starargs, kwargs=node.kwargs)
         elif isinstance(node.func, ast.Name):
+            if node.func.id in self.functions_to_be_made_unique:
+                # replace a() with A_a()
+                return ast.Call(func=ast.Name(id="{:}_{:}".format(self.module_name, node.func.id), ctx=ast.Load()), args=node.args, keywords=node.keywords, starargs=node.starargs, kwargs=node.kwargs)
             if node.func.id in self.new_alias:
+                # replace some class A() with 12fg3ac19()
                 return ast.Call(func=ast.Name(id=self.new_alias[node.func.id], ctx=ast.Load()), args=node.args, keywords=node.keywords, starargs=node.starargs, kwargs=node.kwargs)
         return node
 
@@ -45,11 +88,20 @@ class Alias_Replace(ast.NodeTransformer):
             if import_name.asname != None:
                 h = SHA256.new()
                 h.update(import_name.name)
-                self.new_alias[import_name.asname] = 'a'+h.hexdigest()
+                hashValue = 'a' + h.hexdigest()
+                self.new_alias[import_name.asname] = hashValue
+                self.reverse_new_alias[hashValue] = import_name.name
                 imports.append(ast.alias(name=import_name.name, asname=self.new_alias[import_name.asname]))
             else:
                 imports.append(import_name)
         return ast.Import(imports)
+    
+    def visit_FunctionDef(self, node):
+        """Replace all function definitions with <module_name>_function_name()"""
+        self.generic_visit(node)
+        if node.name in self.functions_to_be_made_unique:
+            return ast.FunctionDef(name="{:}_{:}".format(self.module_name, node.name), args=node.args, body=node.body, decorator_list=node.decorator_list)
+        return node
 
     def visit_Attribute(self, node):
         """Replace any references to aliased import with a hash value when call is in the form sys.argv"""
@@ -65,7 +117,9 @@ class Alias_Replace(ast.NodeTransformer):
             if import_name.asname != None:
                 h = SHA256.new()
                 h.update(import_name.name)
-                self.new_alias[import_name.asname] = 'a'+h.hexdigest()
+                hashValue = 'a' + h.hexdigest()
+                self.new_alias[import_name.asname] = hashValue
+                self.reverse_new_alias[hashValue] = import_name.name
                 imports.append(ast.alias(name=import_name.name, asname=self.new_alias[import_name.asname]))
             else:
                 imports.append(import_name)
@@ -347,7 +401,11 @@ class SourceEncryptor(object):
         """Fix aliasing conflicts and remove any module level code that is not a ClassDef, FunctionDef, Import or ImportFrom provided it is not from the source file containing the application entry point."""
         with open(source, 'r') as fin:
             root = ast.parse(fin.read())
-        fixed_aliasing = Alias_Replace()
+        functions_to_be_made_unique = []
+        for node in root.body:
+            if isinstance(node, ast.FunctionDef):
+                functions_to_be_made_unique.append(node.name)
+        fixed_aliasing = Alias_Replace(source, functions_to_be_made_unique)
         fixed_aliasing.visit(root)
         ast.fix_missing_locations(root)
         if not entry:
