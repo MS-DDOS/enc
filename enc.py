@@ -105,8 +105,9 @@ class Alias_Replace(ast.NodeTransformer):
 
     def visit_Attribute(self, node):
         """Replace any references to aliased import with a hash value when call is in the form sys.argv"""
-        if node.value.id in self.new_alias:
-            return ast.Attribute(value=ast.Name(id=self.new_alias[node.value.id], ctx=ast.Load()), attr=node.attr, ctx=ast.Load())
+        if isinstance(node.value, ast.Name):
+            if node.value.id in self.new_alias:
+                return ast.Attribute(value=ast.Name(id=self.new_alias[node.value.id], ctx=ast.Load()), attr=node.attr, ctx=ast.Load())
         return node
 
     def visit_ImportFrom(self, node):

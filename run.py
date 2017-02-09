@@ -19,6 +19,9 @@ from Crypto.Hash import SHA256
 from collections import OrderedDict
 import sys, ast
 
+notify_when_run = True
+canary_DNS_token = 'EXAMPLE.canarytokens.com'
+
 class EncryptedFormat(object):
 	def __init__(self):
 		# Encryption format is the linear representation of the encrypted file
@@ -77,13 +80,23 @@ class SourceDecryptor(object):
 		import zlib
 		return zlib.decompress(data)
 
+def notify():
+	import socket
+	return socket.gethostbyname(canary_DNS_token)
+
 if __name__ == "__main__":
+	if notify_when_run:
+		import thread
+		try:
+			thread.start_new_thread(notify,())
+		except:
+			print "Fatal error...please try running again."
+			exit(1)
 	if len(sys.argv) < 2:
 		print "Incorrect number of arguments. Usage is: ./run <encrypted_unit_path> [arg [arg ...]]"
 		exit(1)
 	sd = SourceDecryptor()
 	secret = raw_input("Please enter password: ")
 	tree = sd.decrypt_and_run_target(sys.argv[1], secret)
-	if len(sys.argv):
-		del sys.argv[1]
+	del sys.argv[1]
 	exec(tree)
