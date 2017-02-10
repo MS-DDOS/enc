@@ -105,3 +105,5 @@ Anyone is welcome to use ENC for their own projects provided that you adhere to 
 ---
 ### Contribute fixes and features
 ENC is completely open source and I welcome anyone who would like to contribute to the project. If you're interested in contributing please contact me and/or submit a pull request! I plan to make a number of updates to the code myself, including performance increases, style refactoring and some new features but I can't do it all myself!
+
+[![Analytics](https://ga-beacon.appspot.com/UA-91800508-1/enc/readme)](https://github.com/igrigorik/ga-beacon)
