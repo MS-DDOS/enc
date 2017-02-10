@@ -19,7 +19,11 @@ from Crypto.Hash import SHA256
 from collections import OrderedDict
 import sys, ast
 
+<<<<<<< HEAD
 notify_when_run = False
+=======
+notify_when_run = True
+>>>>>>> c24c1491531d6b7a1ef4abef986f8795bb3be1ac
 canary_DNS_token = 'EXAMPLE.canarytokens.com'
 
 class EncryptedFormat(object):
